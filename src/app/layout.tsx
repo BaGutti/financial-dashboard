@@ -5,7 +5,6 @@ import { ToastProvider } from "@/components/ui/ToastProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
-// DESPUÉS (sin warning):
 export const metadata: Metadata = {
   title: "Financial Dashboard - Controla tus Finanzas",
   description:
@@ -14,7 +13,6 @@ export const metadata: Metadata = {
   authors: [{ name: "Financial Dashboard Team" }],
 };
 
-// Nueva función separada para viewport
 export const viewport = {
   width: "device-width",
   initialScale: 1,
@@ -26,10 +24,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es">
-      <body className={inter.className}>
+    <html lang="es" suppressHydrationWarning>
+      <body className={`${inter.className} transition-colors duration-300`}>
         <ToastProvider>
-          <div className="min-h-screen bg-gray-50">{children}</div>
+          <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+            {children}
+          </div>
         </ToastProvider>
       </body>
     </html>

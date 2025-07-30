@@ -92,3 +92,174 @@ export const CATEGORIES: Record<string, Category> = {
   otros: { name: "Otros", color: "bg-gray-100 text-gray-800", icon: "📦" },
   pc: { name: "PC Gaming", color: "bg-cyan-100 text-cyan-800", icon: "🖥️" },
 };
+
+export type IncomeFrequency = "weekly" | "biweekly" | "monthly" | "occasional";
+
+export type IncomeCategory =
+  | "salary"
+  | "freelance"
+  | "investment"
+  | "bonus"
+  | "other";
+
+export interface IncomeSource {
+  id: string;
+  user_id: string;
+  name: string;
+  amount: number;
+  frequency: IncomeFrequency;
+  payment_day: number | null;
+  description: string | null;
+  is_active: boolean;
+  category: IncomeCategory;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IncomeTransaction {
+  id: string;
+  user_id: string;
+  income_source_id: string | null;
+  amount: number;
+  received_date: string;
+  description: string | null;
+  created_at: string;
+}
+
+export interface ExpectedIncome {
+  source_name: string;
+  expected_amount: number;
+  expected_date: string;
+  frequency: IncomeFrequency;
+  category: IncomeCategory;
+}
+
+// Actualizar las categorías existentes para incluir categorías de ingresos
+export const INCOME_CATEGORIES: Record<
+  IncomeCategory,
+  {
+    name: string;
+    color: string;
+    icon: string;
+  }
+> = {
+  salary: { name: "Salario", color: "bg-green-100 text-green-800", icon: "💼" },
+  freelance: {
+    name: "Freelance",
+    color: "bg-blue-100 text-blue-800",
+    icon: "🖥️",
+  },
+  investment: {
+    name: "Inversiones",
+    color: "bg-purple-100 text-purple-800",
+    icon: "📈",
+  },
+  bonus: { name: "Bonos", color: "bg-yellow-100 text-yellow-800", icon: "🎁" },
+  other: { name: "Otros", color: "bg-gray-100 text-gray-800", icon: "💰" },
+};
+
+export const FREQUENCY_LABELS: Record<IncomeFrequency, string> = {
+  weekly: "Semanal",
+  biweekly: "Quincenal",
+  monthly: "Mensual",
+  occasional: "Ocasional",
+};
+
+// Helper functions
+export function getNextPaymentDate(source: IncomeSource): Date | null {
+  if (source.frequency === "occasional" || !source.payment_day) {
+    return null;
+  }
+
+  const today = new Date();
+  const currentMonth = today.getMonth();
+  const currentYear = today.getFullYear();
+
+  let nextPayment: Date;
+
+  switch (source.frequency) {
+    case "monthly":
+      nextPayment = new Date(currentYear, currentMonth, source.payment_day);
+      if (nextPayment <= today) {
+        nextPayment = new Date(
+          currentYear,
+          currentMonth + 1,
+          source.payment_day,
+        );
+      }
+      break;
+
+    case "biweekly":
+      // Quincenal: día 1 y 15 de cada mes
+      const day1 = new Date(currentYear, currentMonth, 1);
+      const day15 = new Date(currentYear, currentMonth, 15);
+
+      if (day15 > today) {
+        nextPayment = day15;
+      } else if (day1 > today) {
+        nextPayment = day1;
+      } else {
+        nextPayment = new Date(currentYear, currentMonth + 1, 1);
+      }
+      break;
+
+    case "weekly":
+      // Semanal: cada 7 días desde la fecha de creación
+      const createdDate = new Date(source.created_at);
+      const daysSinceCreated = Math.floor(
+        (today.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      const weeksSinceCreated = Math.floor(daysSinceCreated / 7);
+      nextPayment = new Date(
+        createdDate.getTime() +
+          (weeksSinceCreated + 1) * 7 * 24 * 60 * 60 * 1000,
+      );
+      break;
+
+    default:
+      return null;
+  }
+
+  return nextPayment;
+}
+
+export function calculateMonthlyIncome(sources: IncomeSource[]): number {
+  return sources
+    .filter((source) => source.is_active)
+    .reduce((total, source) => {
+      switch (source.frequency) {
+        case "weekly":
+          return total + source.amount * 4.33; // Promedio de semanas por mes
+        case "biweekly":
+          return total + source.amount * 2; // Dos pagos por mes
+        case "monthly":
+          return total + source.amount;
+        case "occasional":
+          return total; // No se cuenta en ingresos regulares
+        default:
+          return total;
+      }
+    }, 0);
+}
+
+export function getUpcomingIncomes(
+  sources: IncomeSource[],
+  days: number = 7,
+): Array<IncomeSource & { nextPayment: Date }> {
+  const today = new Date();
+  const futureDate = new Date(today.getTime() + days * 24 * 60 * 60 * 1000);
+
+  return sources
+    .filter((source) => source.is_active && source.frequency !== "occasional")
+    .map((source) => ({
+      ...source,
+      nextPayment: getNextPaymentDate(source)!,
+    }))
+    .filter(
+      (item) =>
+        item.nextPayment &&
+        item.nextPayment >= today &&
+        item.nextPayment <= futureDate,
+    )
+    .sort((a, b) => a.nextPayment.getTime() - b.nextPayment.getTime());
+}

@@ -7,6 +7,14 @@ import type {
   PendingLoan,
   WishlistItem,
   MonthlySalary,
+  IncomeSource,
+  IncomeTransaction,
+  ExpectedIncome,
+} from "@/types/financial";
+import {
+  calculateMonthlyIncome,
+  getUpcomingIncomes,
+  getNextPaymentDate,
 } from "@/types/financial";
 
 export function useFinancialData(user: User | null) {
@@ -14,7 +22,11 @@ export function useFinancialData(user: User | null) {
   const [error, setError] = useState<string | null>(null);
 
   // Financial data states
-  const [currentSalary, setCurrentSalary] = useState(2500000);
+  const [currentSalary, setCurrentSalary] = useState(2500000); // Mantenemos por compatibilidad
+  const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
+  const [incomeTransactions, setIncomeTransactions] = useState<
+    IncomeTransaction[]
+  >([]);
   const [regularExpenses, setRegularExpenses] = useState<RegularExpense[]>([]);
   const [sporadicExpenses, setSporadicExpenses] = useState<SporadicExpense[]>(
     [],
@@ -30,12 +42,25 @@ export function useFinancialData(user: User | null) {
     setLoading(true);
     try {
       const [
+        { data: incomeSourcesData, error: incomeError },
+        { data: incomeTransactionsData, error: transError },
         { data: regularExpensesData, error: regError },
         { data: sporadicExpensesData, error: sporError },
         { data: pendingLoansData, error: loanError },
         { data: wishlistData, error: wishError },
         { data: salaryData, error: salaryError },
       ] = await Promise.all([
+        supabase
+          .from("income_sources")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("income_transactions")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("received_date", { ascending: false })
+          .limit(50),
         supabase
           .from("regular_expenses")
           .select("*")
@@ -64,17 +89,26 @@ export function useFinancialData(user: User | null) {
           .limit(1),
       ]);
 
+      if (incomeError) throw incomeError;
+      if (transError) throw transError;
       if (regError) throw regError;
       if (sporError) throw sporError;
       if (loanError) throw loanError;
       if (wishError) throw wishError;
       if (salaryError) throw salaryError;
 
+      setIncomeSources(incomeSourcesData || []);
+      setIncomeTransactions(incomeTransactionsData || []);
       setRegularExpenses(regularExpensesData || []);
       setSporadicExpenses(sporadicExpensesData || []);
       setPendingLoans(pendingLoansData || []);
       setWishlist(wishlistData || []);
-      if (salaryData?.[0]) {
+
+      // Si hay ingresos configurados, calcular el total, sino usar el salario legacy
+      if (incomeSourcesData && incomeSourcesData.length > 0) {
+        const totalMonthlyIncome = calculateMonthlyIncome(incomeSourcesData);
+        setCurrentSalary(totalMonthlyIncome);
+      } else if (salaryData?.[0]) {
         setCurrentSalary(salaryData[0].amount);
       }
 
@@ -93,7 +127,137 @@ export function useFinancialData(user: User | null) {
     }
   }, [user]);
 
-  // CRUD Operations
+  // ===== INCOME SOURCES CRUD =====
+  const addIncomeSource = async (
+    source: Omit<IncomeSource, "id" | "user_id" | "created_at" | "updated_at">,
+  ) => {
+    if (!user) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from("income_sources")
+        .insert({ ...source, user_id: user.id })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setIncomeSources((prev) => [data, ...prev]);
+
+      // Recalcular salario total
+      const newTotal = calculateMonthlyIncome([data, ...incomeSources]);
+      setCurrentSalary(newTotal);
+
+      return data;
+    } catch (err: any) {
+      setError(err.message);
+      return null;
+    }
+  };
+
+  const updateIncomeSource = async (
+    id: string,
+    updates: Partial<IncomeSource>,
+  ) => {
+    if (!user) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from("income_sources")
+        .update(updates)
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setIncomeSources((prev) =>
+        prev.map((source) => (source.id === id ? data : source)),
+      );
+
+      // Recalcular salario total
+      const updatedSources = incomeSources.map((source) =>
+        source.id === id ? data : source,
+      );
+      const newTotal = calculateMonthlyIncome(updatedSources);
+      setCurrentSalary(newTotal);
+
+      return data;
+    } catch (err: any) {
+      setError(err.message);
+      return null;
+    }
+  };
+
+  const deleteIncomeSource = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("income_sources")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+
+      const updatedSources = incomeSources.filter((source) => source.id !== id);
+      setIncomeSources(updatedSources);
+
+      // Recalcular salario total
+      const newTotal = calculateMonthlyIncome(updatedSources);
+      setCurrentSalary(newTotal);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const toggleIncomeSourceStatus = async (id: string) => {
+    const source = incomeSources.find((s) => s.id === id);
+    if (!source) return;
+
+    return await updateIncomeSource(id, { is_active: !source.is_active });
+  };
+
+  // ===== INCOME TRANSACTIONS CRUD =====
+  const addIncomeTransaction = async (
+    transaction: Omit<IncomeTransaction, "id" | "user_id" | "created_at">,
+  ) => {
+    if (!user) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from("income_transactions")
+        .insert({ ...transaction, user_id: user.id })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setIncomeTransactions((prev) => [data, ...prev]);
+      return data;
+    } catch (err: any) {
+      setError(err.message);
+      return null;
+    }
+  };
+
+  const deleteIncomeTransaction = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from("income_transactions")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+
+      setIncomeTransactions((prev) => prev.filter((t) => t.id !== id));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  // ===== EXISTING CRUD OPERATIONS (mantener las existentes) =====
   const addRegularExpense = async (
     expense: Omit<
       RegularExpense,
@@ -201,7 +365,7 @@ export function useFinancialData(user: User | null) {
     }
   };
 
-  // Delete operations
+  // Delete operations (mantener las existentes)
   const deleteRegularExpense = async (id: string) => {
     try {
       const { error } = await supabase
@@ -254,7 +418,7 @@ export function useFinancialData(user: User | null) {
     }
   };
 
-  // Update salary
+  // Update salary (mantener por compatibilidad pero ahora solo para casos legacy)
   const updateSalary = async (amount: number) => {
     if (!user) return;
 
@@ -299,7 +463,7 @@ export function useFinancialData(user: User | null) {
     }
   };
 
-  // Calculations
+  // ===== CALCULATIONS (actualizadas) =====
   const totalRegularExpenses = regularExpenses.reduce(
     (sum, expense) => sum + expense.amount,
     0,
@@ -309,13 +473,15 @@ export function useFinancialData(user: User | null) {
     0,
   );
   const totalExpenses = totalRegularExpenses + totalSporadicExpenses;
-  const baseBalance = currentSalary - totalExpenses;
+  const totalMonthlyIncome = calculateMonthlyIncome(incomeSources);
+  const baseBalance = (totalMonthlyIncome || currentSalary) - totalExpenses;
   const expectedLoans = pendingLoans.reduce(
     (sum, loan) => sum + (loan.amount * loan.probability) / 100,
     0,
   );
   const potentialBalance = baseBalance + expectedLoans;
 
+  // Get upcoming payments (existing)
   const getUpcomingPayments = () => {
     const today = new Date();
     const currentDay = today.getDate();
@@ -329,6 +495,12 @@ export function useFinancialData(user: User | null) {
       .sort((a, b) => a.payment_date - b.payment_date);
   };
 
+  // NEW: Get upcoming incomes
+  const getUpcomingIncomesData = (days: number = 7) => {
+    return getUpcomingIncomes(incomeSources, days);
+  };
+
+  // Get affordable items (existing)
   const getAffordableItems = () => {
     return wishlist.map((item) => ({
       ...item,
@@ -338,9 +510,33 @@ export function useFinancialData(user: User | null) {
     }));
   };
 
+  // NEW: Get income summary for current month
+  const getIncomeTransactionsThisMonth = () => {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+
+    return incomeTransactions.filter((transaction) => {
+      const transactionDate = new Date(transaction.received_date);
+      return (
+        transactionDate.getMonth() === currentMonth &&
+        transactionDate.getFullYear() === currentYear
+      );
+    });
+  };
+
+  const getActualIncomeThisMonth = () => {
+    return getIncomeTransactionsThisMonth().reduce(
+      (sum, transaction) => sum + transaction.amount,
+      0,
+    );
+  };
+
   return {
     // Data
     currentSalary,
+    totalMonthlyIncome,
+    incomeSources,
+    incomeTransactions,
     regularExpenses,
     sporadicExpenses,
     pendingLoans,
@@ -350,7 +546,15 @@ export function useFinancialData(user: User | null) {
     loading,
     error,
 
-    // Operations
+    // Income Operations (NEW)
+    addIncomeSource,
+    updateIncomeSource,
+    deleteIncomeSource,
+    toggleIncomeSourceStatus,
+    addIncomeTransaction,
+    deleteIncomeTransaction,
+
+    // Existing Operations
     addRegularExpense,
     addSporadicExpense,
     addLoan,
@@ -370,6 +574,9 @@ export function useFinancialData(user: User | null) {
     expectedLoans,
     potentialBalance,
     getUpcomingPayments,
+    getUpcomingIncomesData,
     getAffordableItems,
+    getIncomeTransactionsThisMonth,
+    getActualIncomeThisMonth,
   };
 }
