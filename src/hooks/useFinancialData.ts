@@ -179,12 +179,21 @@ export function useFinancialData(user: User | null) {
 
       if (error) throw error;
 
-      setWishlist((prev) =>
-        [...prev, data].sort((a, b) => {
-          const priorityOrder = { alta: 3, media: 2, baja: 1 };
-          return priorityOrder[b.priority] - priorityOrder[a.priority];
-        }),
-      );
+      setWishlist((prev) => {
+        const priorityOrder: Record<"alta" | "media" | "baja", number> = {
+          alta: 3,
+          media: 2,
+          baja: 1,
+        };
+
+        return [...prev, data].sort((a, b) => {
+          const aPriority =
+            priorityOrder[a.priority as keyof typeof priorityOrder] || 1;
+          const bPriority =
+            priorityOrder[b.priority as keyof typeof priorityOrder] || 1;
+          return bPriority - aPriority;
+        });
+      });
       return data;
     } catch (err: any) {
       setError(err.message);
