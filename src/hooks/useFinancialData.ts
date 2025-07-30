@@ -191,18 +191,16 @@ export function useFinancialData(user: User | null) {
   };
 
   const deleteIncomeSource = async (id: string) => {
+    if (!user) return;
     try {
       const { error } = await supabase
         .from("income_sources")
         .delete()
         .eq("id", id)
         .eq("user_id", user.id);
-
       if (error) throw error;
-
       const updatedSources = incomeSources.filter((source) => source.id !== id);
       setIncomeSources(updatedSources);
-
       // Recalcular salario total
       const newTotal = calculateMonthlyIncome(updatedSources);
       setCurrentSalary(newTotal);
@@ -242,15 +240,14 @@ export function useFinancialData(user: User | null) {
   };
 
   const deleteIncomeTransaction = async (id: string) => {
+    if (!user) return;
     try {
       const { error } = await supabase
         .from("income_transactions")
         .delete()
         .eq("id", id)
         .eq("user_id", user.id);
-
       if (error) throw error;
-
       setIncomeTransactions((prev) => prev.filter((t) => t.id !== id));
     } catch (err: any) {
       setError(err.message);
