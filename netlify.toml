@@ -1,39 +1,47 @@
 [build]
-command = "npm run build"
-publish = ".next"
-
-[[redirects]]
-from = "/*"
-to = "/index.html"
-status = 200
+  command = "npm run build"
+  publish = ".next"  # Para Next.js 15 esto sigue siendo correcto
 
 [build.environment]
-NODE_VERSION = "18"
+  NODE_VERSION = "20"  # 🚀 ACTUALIZADO: Era 18, ahora 20
+  NPM_FLAGS = "--legacy-peer-deps"  # Para resolver warnings de dependencias
 
-# Edge Functions para optimizar performance
-[[edge_functions]]
-function = "auth-middleware"
-path = "/dashboard/*"
-
-# Headers para seguridad
+# ✅ Headers para seguridad (mejorados)
 [[headers]]
-for = "/*"
-[headers.values]
-X-Frame-Options = "DENY"
-X-XSS-Protection = "1; mode=block"
-X-Content-Type-Options = "nosniff"
-Referrer-Policy = "strict-origin-when-cross-origin"
-Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    # 🚀 NUEVO: Headers de seguridad adicionales
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co;"
+
+# ✅ Headers para API (mejorados)
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "Content-Type, Authorization"
+    # 🚀 NUEVO: Cache para APIs
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# ✅ Cache optimizado para Next.js 15
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
 
 [[headers]]
-for = "/api/*"
-[headers.values]
-Access-Control-Allow-Origin = "*"
-Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
-Access-Control-Allow-Headers = "Content-Type, Authorization"
+  for = "/_next/image*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
 
-# Cache estático
-[[headers]]
-for = "/_next/static/*"
-[headers.values]
-Cache-Control = "public, max-age=31536000, immutable"
+# 🚀 NUEVO: Cache para fuentes y otros assets
+[[headers]]  
+  for = "/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
