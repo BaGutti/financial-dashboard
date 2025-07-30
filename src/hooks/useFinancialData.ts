@@ -253,14 +253,36 @@ export function useFinancialData(user: User | null) {
       const currentMonth = new Date().getMonth() + 1;
       const currentYear = new Date().getFullYear();
 
-      const { error } = await supabase.from("monthly_salaries").upsert({
-        user_id: user.id,
-        amount,
-        month: currentMonth,
-        year: currentYear,
-      });
+      // Primero verificar si existe
+      const { data: existing } = await supabase
+        .from("monthly_salaries")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("month", currentMonth)
+        .eq("year", currentYear)
+        .single();
 
-      if (error) throw error;
+      if (existing) {
+        // Si existe, actualizar
+        const { error } = await supabase
+          .from("monthly_salaries")
+          .update({ amount })
+          .eq("user_id", user.id)
+          .eq("month", currentMonth)
+          .eq("year", currentYear);
+
+        if (error) throw error;
+      } else {
+        // Si no existe, insertar
+        const { error } = await supabase.from("monthly_salaries").insert({
+          user_id: user.id,
+          amount,
+          month: currentMonth,
+          year: currentYear,
+        });
+
+        if (error) throw error;
+      }
 
       setCurrentSalary(amount);
     } catch (err: any) {

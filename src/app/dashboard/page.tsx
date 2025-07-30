@@ -17,7 +17,8 @@ import {
   BarChart3,
   Calendar,
   Heart,
-  Monitor
+  Monitor,
+  Trash2 
 } from 'lucide-react'
 
 // Imports de nuestros componentes personalizados

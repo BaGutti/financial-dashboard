@@ -5,13 +5,19 @@ import { ToastProvider } from "@/components/ui/ToastProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
+// DESPUÉS (sin warning):
 export const metadata: Metadata = {
   title: "Financial Dashboard - Controla tus Finanzas",
   description:
     "Dashboard personal para manejar ingresos, gastos y planificación financiera",
   keywords: "finanzas, dashboard, gastos, ingresos, presupuesto, ahorro",
   authors: [{ name: "Financial Dashboard Team" }],
-  viewport: "width=device-width, initial-scale=1",
+};
+
+// Nueva función separada para viewport
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
