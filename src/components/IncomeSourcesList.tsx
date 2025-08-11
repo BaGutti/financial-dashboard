@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import {
   Edit,
   Trash2,
   ToggleLeft,
   ToggleRight,
   Calendar,
-  DollarSign,
 } from "lucide-react";
 import type { IncomeSource } from "@/types/financial";
 import {

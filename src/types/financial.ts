@@ -5,6 +5,8 @@ export interface RegularExpense {
   amount: number;
   category: string;
   payment_date: number;
+  paid: boolean;
+  paid_date: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -19,15 +21,29 @@ export interface SporadicExpense {
   created_at: string;
 }
 
+export type LoanStatus = 'pending' | 'overdue' | 'partial' | 'completed' | 'lost';
+
 export interface PendingLoan {
   id: string;
   user_id: string;
   description: string;
   amount: number;
+  amount_paid: number;
   probability: number;
   expected_date: string | null;
+  status: LoanStatus;
   created_at: string;
   updated_at: string;
+}
+
+export interface LoanPayment {
+  id: string;
+  user_id: string;
+  loan_id: string;
+  amount: number;
+  payment_date: string;
+  description: string | null;
+  created_at: string;
 }
 
 export interface WishlistItem {

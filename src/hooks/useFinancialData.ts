@@ -5,16 +5,14 @@ import type {
   RegularExpense,
   SporadicExpense,
   PendingLoan,
+  LoanPayment,
   WishlistItem,
-  MonthlySalary,
   IncomeSource,
   IncomeTransaction,
-  ExpectedIncome,
 } from "@/types/financial";
 import {
   calculateMonthlyIncome,
   getUpcomingIncomes,
-  getNextPaymentDate,
 } from "@/types/financial";
 
 export function useFinancialData(user: User | null) {
@@ -32,6 +30,7 @@ export function useFinancialData(user: User | null) {
     [],
   );
   const [pendingLoans, setPendingLoans] = useState<PendingLoan[]>([]);
+  const [loanPayments, setLoanPayments] = useState<LoanPayment[]>([]);
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
 
   const supabase = createClient();
@@ -47,6 +46,7 @@ export function useFinancialData(user: User | null) {
         { data: regularExpensesData, error: regError },
         { data: sporadicExpensesData, error: sporError },
         { data: pendingLoansData, error: loanError },
+        { data: loanPaymentsData, error: loanPayError },
         { data: wishlistData, error: wishError },
         { data: salaryData, error: salaryError },
       ] = await Promise.all([
@@ -77,6 +77,11 @@ export function useFinancialData(user: User | null) {
           .eq("user_id", user.id)
           .order("created_at", { ascending: false }),
         supabase
+          .from("loan_payments")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
           .from("wishlist_items")
           .select("*")
           .eq("user_id", user.id)
@@ -94,6 +99,7 @@ export function useFinancialData(user: User | null) {
       if (regError) throw regError;
       if (sporError) throw sporError;
       if (loanError) throw loanError;
+      if (loanPayError) throw loanPayError;
       if (wishError) throw wishError;
       if (salaryError) throw salaryError;
 
@@ -102,6 +108,7 @@ export function useFinancialData(user: User | null) {
       setRegularExpenses(regularExpensesData || []);
       setSporadicExpenses(sporadicExpensesData || []);
       setPendingLoans(pendingLoansData || []);
+      setLoanPayments(loanPaymentsData || []);
       setWishlist(wishlistData || []);
 
       // Si hay ingresos configurados, calcular el total, sino usar el salario legacy
@@ -305,14 +312,19 @@ export function useFinancialData(user: User | null) {
   };
 
   const addLoan = async (
-    loan: Omit<PendingLoan, "id" | "user_id" | "created_at" | "updated_at">,
+    loan: Omit<PendingLoan, "id" | "user_id" | "created_at" | "updated_at" | "amount_paid" | "status">,
   ) => {
     if (!user) return null;
 
     try {
       const { data, error } = await supabase
         .from("pending_loans")
-        .insert({ ...loan, user_id: user.id })
+        .insert({ 
+          ...loan, 
+          user_id: user.id,
+          amount_paid: 0,
+          status: 'pending' as const
+        })
         .select()
         .single();
 
@@ -376,6 +388,40 @@ export function useFinancialData(user: User | null) {
     }
   };
 
+  const toggleRegularExpensePaid = async (id: string) => {
+    if (!user) return null;
+
+    try {
+      const expense = regularExpenses.find((e) => e.id === id);
+      if (!expense) return null;
+
+      const newPaidStatus = !expense.paid;
+      const paidDate = newPaidStatus ? new Date().toISOString().split('T')[0] : null;
+
+      const { data, error } = await supabase
+        .from("regular_expenses")
+        .update({ 
+          paid: newPaidStatus,
+          paid_date: paidDate
+        })
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setRegularExpenses((prev) =>
+        prev.map((e) => (e.id === id ? data : e))
+      );
+
+      return data;
+    } catch (err: any) {
+      setError(err.message);
+      return null;
+    }
+  };
+
   const deleteSporadicExpense = async (id: string) => {
     try {
       const { error } = await supabase
@@ -412,6 +458,153 @@ export function useFinancialData(user: User | null) {
       setWishlist((prev) => prev.filter((w) => w.id !== id));
     } catch (err: any) {
       setError(err.message);
+    }
+  };
+
+  // NEW: Loan payment functions
+  const addLoanPayment = async (
+    loanId: string,
+    payment: {
+      amount: number;
+      payment_date?: string;
+      description?: string;
+    }
+  ) => {
+    if (!user) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from("loan_payments")
+        .insert({
+          ...payment,
+          loan_id: loanId,
+          user_id: user.id,
+          payment_date: payment.payment_date || new Date().toISOString().split('T')[0],
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setLoanPayments((prev) => [data, ...prev]);
+      
+      // Refresh loans to update status
+      loadFinancialData();
+      
+      return data;
+    } catch (err: any) {
+      setError(err.message);
+      return null;
+    }
+  };
+
+  const updateLoanStatus = async (loanId: string, status: 'pending' | 'overdue' | 'partial' | 'completed' | 'lost') => {
+    if (!user) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from("pending_loans")
+        .update({ status })
+        .eq("id", loanId)
+        .eq("user_id", user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setPendingLoans((prev) =>
+        prev.map((loan) => (loan.id === loanId ? data : loan))
+      );
+      
+      return data;
+    } catch (err: any) {
+      setError(err.message);
+      return null;
+    }
+  };
+
+  const extendLoanDate = async (loanId: string, newDate: string) => {
+    if (!user) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from("pending_loans")
+        .update({ expected_date: newDate })
+        .eq("id", loanId)
+        .eq("user_id", user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setPendingLoans((prev) =>
+        prev.map((loan) => (loan.id === loanId ? data : loan))
+      );
+      
+      return data;
+    } catch (err: any) {
+      setError(err.message);
+      return null;
+    }
+  };
+
+  // NEW: Purchase item from wishlist
+  const purchaseWishlistItem = async (
+    wishlistItemId: string,
+    purchaseData: {
+      actualPrice?: number;
+      category?: string;
+      date?: string;
+    } = {}
+  ) => {
+    if (!user) return null;
+
+    try {
+      // Find the wishlist item
+      const wishlistItem = wishlist.find(item => item.id === wishlistItemId);
+      if (!wishlistItem) {
+        throw new Error('Item not found in wishlist');
+      }
+
+      // Create the expense with actual purchase data
+      const expenseData = {
+        description: `🛒 ${wishlistItem.item} (desde wishlist)`,
+        amount: purchaseData.actualPrice || wishlistItem.price,
+        category: purchaseData.category || wishlistItem.category,
+        date: purchaseData.date || new Date().toISOString().split('T')[0],
+      };
+
+      // Add as sporadic expense
+      const { data: expenseResult, error: expenseError } = await supabase
+        .from("sporadic_expenses")
+        .insert({ ...expenseData, user_id: user.id })
+        .select()
+        .single();
+
+      if (expenseError) throw expenseError;
+
+      // Remove from wishlist
+      const { error: deleteError } = await supabase
+        .from("wishlist_items")
+        .delete()
+        .eq("id", wishlistItemId)
+        .eq("user_id", user.id);
+
+      if (deleteError) throw deleteError;
+
+      // Update local state
+      setSporadicExpenses((prev) => [expenseResult, ...prev]);
+      setWishlist((prev) => prev.filter((w) => w.id !== wishlistItemId));
+
+      return {
+        item: wishlistItem,
+        expense: expenseResult,
+        success: true
+      };
+
+    } catch (err: any) {
+      setError(err.message);
+      return { success: false, error: err.message };
     }
   };
 
@@ -462,7 +655,7 @@ export function useFinancialData(user: User | null) {
 
   // ===== CALCULATIONS (actualizadas) =====
   const totalRegularExpenses = regularExpenses.reduce(
-    (sum, expense) => sum + expense.amount,
+    (sum, expense) => sum + (expense.paid ? 0 : expense.amount),
     0,
   );
   const totalSporadicExpenses = sporadicExpenses.reduce(
@@ -471,7 +664,11 @@ export function useFinancialData(user: User | null) {
   );
   const totalExpenses = totalRegularExpenses + totalSporadicExpenses;
   const totalMonthlyIncome = calculateMonthlyIncome(incomeSources);
-  const baseBalance = (totalMonthlyIncome || currentSalary) - totalExpenses;
+  const actualIncomeThisMonth = getIncomeTransactionsThisMonth().reduce(
+    (sum, transaction) => sum + transaction.amount,
+    0,
+  );
+  const baseBalance = (totalMonthlyIncome || currentSalary) + actualIncomeThisMonth - totalExpenses;
   const expectedLoans = pendingLoans.reduce(
     (sum, loan) => sum + (loan.amount * loan.probability) / 100,
     0,
@@ -537,6 +734,7 @@ export function useFinancialData(user: User | null) {
     regularExpenses,
     sporadicExpenses,
     pendingLoans,
+    loanPayments,
     wishlist,
 
     // State
@@ -557,9 +755,14 @@ export function useFinancialData(user: User | null) {
     addLoan,
     addWishItem,
     deleteRegularExpense,
+    toggleRegularExpensePaid,
     deleteSporadicExpense,
     deleteLoan,
+    addLoanPayment,
+    updateLoanStatus,
+    extendLoanDate,
     deleteWishItem,
+    purchaseWishlistItem,
     updateSalary,
     refresh: loadFinancialData,
 
