@@ -57,6 +57,56 @@ export interface WishlistItem {
   updated_at: string;
 }
 
+export type CreditStatus = 'active' | 'paid' | 'overdue' | 'paused';
+export type CreditCategory = 'personal' | 'mortgage' | 'car' | 'credit_card' | 'education' | 'business' | 'other';
+export type CreditPriority = 'low' | 'medium' | 'high' | 'critical';
+
+export interface PersonalCredit {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  total_amount: number;
+  remaining_amount: number;
+  monthly_payment: number;
+  interest_rate: number;
+  start_date: string;
+  end_date: string | null;
+  payment_day: number;
+  status: CreditStatus;
+  category: CreditCategory;
+  priority: CreditPriority;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreditPayment {
+  id: string;
+  user_id: string;
+  credit_id: string;
+  amount: number;
+  payment_date: string;
+  due_date: string;
+  principal_amount: number;
+  interest_amount: number;
+  fees_amount: number;
+  status: 'paid' | 'pending' | 'late';
+  description: string | null;
+  created_at: string;
+}
+
+export interface CreditInstallment {
+  id: string;
+  user_id: string;
+  credit_id: string;
+  installment_number: number;
+  due_date: string;
+  amount: number;
+  is_paid: boolean;
+  payment_id: string | null;
+  created_at: string;
+}
+
 export interface MonthlySalary {
   id: string;
   user_id: string;
@@ -172,6 +222,37 @@ export const INCOME_CATEGORIES: Record<
   },
   bonus: { name: "Bonos", color: "bg-yellow-100 text-yellow-800", icon: "🎁" },
   other: { name: "Otros", color: "bg-gray-100 text-gray-800", icon: "💰" },
+};
+
+export const CREDIT_CATEGORIES: Record<
+  CreditCategory,
+  {
+    name: string;
+    color: string;
+    icon: string;
+  }
+> = {
+  personal: { name: "Personal", color: "bg-blue-100 text-blue-800", icon: "👤" },
+  mortgage: { name: "Hipoteca", color: "bg-green-100 text-green-800", icon: "🏠" },
+  car: { name: "Vehículo", color: "bg-purple-100 text-purple-800", icon: "🚗" },
+  credit_card: { name: "Tarjeta de Crédito", color: "bg-red-100 text-red-800", icon: "💳" },
+  education: { name: "Educación", color: "bg-indigo-100 text-indigo-800", icon: "🎓" },
+  business: { name: "Negocio", color: "bg-orange-100 text-orange-800", icon: "💼" },
+  other: { name: "Otros", color: "bg-gray-100 text-gray-800", icon: "📄" },
+};
+
+export const CREDIT_PRIORITIES: Record<
+  CreditPriority,
+  {
+    name: string;
+    color: string;
+    icon: string;
+  }
+> = {
+  low: { name: "Baja", color: "bg-gray-100 text-gray-800", icon: "📝" },
+  medium: { name: "Media", color: "bg-yellow-100 text-yellow-800", icon: "⚠️" },
+  high: { name: "Alta", color: "bg-orange-100 text-orange-800", icon: "🔥" },
+  critical: { name: "Crítica", color: "bg-red-100 text-red-800", icon: "🚨" },
 };
 
 export const FREQUENCY_LABELS: Record<IncomeFrequency, string> = {

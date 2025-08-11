@@ -10,7 +10,11 @@
       "Bash(npm run lint)",
       "Bash(npm run build:*)",
       "Bash(npm audit:*)",
-      "Bash(npm ci:*)"
+      "Bash(npm ci:*)",
+      "Bash(npm run:*)",
+      "Bash(taskkill:*)",
+      "Bash(npx kill-port:*)",
+      "Bash(powershell:*)"
     ],
     "deny": []
   }

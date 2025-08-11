@@ -26,6 +26,7 @@ import {
   User as UserIcon,
   Banknote,
   Plus,
+  CreditCard,
 } from "lucide-react";
 
 // Imports de nuestros componentes personalizados
@@ -41,8 +42,9 @@ import { IncomeSourceForm } from "@/components/IncomeSourceForm";
 import { IncomeSourcesList } from "@/components/IncomeSourcesList";
 import { IncomeTransactionForm } from "@/components/IncomeTransactionForm";
 import { Analytics } from "@/components/Analytics";
-import { INCOME_CATEGORIES } from "@/types/financial";
-import type { IncomeSource } from "@/types/financial";
+import { INCOME_CATEGORIES, CREDIT_CATEGORIES, CREDIT_PRIORITIES } from "@/types/financial";
+import type { IncomeSource, PersonalCredit, CreditInstallment } from "@/types/financial";
+import { CreditsList } from "@/components/CreditsList";
 
 // Skeleton Loader Component
 function SkeletonCard() {
@@ -207,6 +209,15 @@ export default function OptimizedDashboard() {
     addLoanPayment,
     updateLoanStatus,
     extendLoanDate,
+    personalCredits,
+    creditPayments,
+    creditInstallments,
+    addPersonalCredit,
+    updatePersonalCredit,
+    deletePersonalCredit,
+    addCreditPayment,
+    totalMonthlyCreditPayments,
+    getUpcomingCreditInstallments,
   } = useFinancialData(user);
 
   useEffect(() => {
@@ -267,6 +278,26 @@ export default function OptimizedDashboard() {
       },
       type: "danger",
     });
+  };
+
+  // Toggle payment status for regular expenses
+  const handleToggleExpensePaid = async (expense: any) => {
+    try {
+      const result = await toggleRegularExpensePaid(expense.id);
+      if (result) {
+        addToast({
+          type: "success",
+          title: expense.paid ? "Gasto marcado como pendiente" : "Gasto marcado como pagado",
+          message: `"${expense.description}" ${expense.paid ? "está ahora pendiente de pago" : "ha sido marcado como pagado"}`,
+        });
+      }
+    } catch (error) {
+      addToast({
+        type: "error",
+        title: "Error",
+        message: "No se pudo actualizar el estado del gasto",
+      });
+    }
   };
 
   // Estados para nuevos formularios usando el patrón optimizado
@@ -904,8 +935,9 @@ export default function OptimizedDashboard() {
             <nav className="hidden md:flex space-x-1">
               {[
                 { id: "overview", label: "Resumen", icon: BarChart3 },
-                { id: "income", label: "Ingresos", icon: Banknote }, // <- NUEVA PESTAÑA
+                { id: "income", label: "Ingresos", icon: Banknote },
                 { id: "expenses", label: "Gastos", icon: TrendingDown },
+                { id: "creditos", label: "Créditos", icon: CreditCard },
                 { id: "wishlist", label: "Wishlist", icon: Heart },
                 { id: "settings", label: "Config", icon: Settings },
               ].map((tab) => (
@@ -961,18 +993,18 @@ export default function OptimizedDashboard() {
               ) : (
                 <>
                   <FinancialCard
-                    title="Ingresos Mensuales"
-                    value={formatCurrency(totalMonthlyIncome || currentSalary)}
-                    subtitle={`${incomeSources.filter((s) => s.is_active).length} fuentes activas`}
+                    title="Total Disponible"
+                    value={formatCurrency((totalMonthlyIncome || currentSalary) + getActualIncomeThisMonth())}
+                    subtitle={`Mensual: ${formatCurrency(totalMonthlyIncome || currentSalary)} + Ocasional: ${formatCurrency(getActualIncomeThisMonth())}`}
                     icon={TrendingUp}
-                    trend="neutral"
+                    trend="up"
                     gradient="border-green-500"
                   />
 
                   <FinancialCard
                     title="Gastos Totales"
                     value={formatCurrency(totalExpenses)}
-                    subtitle={`Regular: ${formatCurrency(totalRegularExpenses)}`}
+                    subtitle={`Regular: ${formatCurrency(totalRegularExpenses)} + Créditos: ${formatCurrency(totalMonthlyCreditPayments)}`}
                     icon={TrendingDown}
                     trend="down"
                     gradient="border-red-500"
@@ -1024,6 +1056,77 @@ export default function OptimizedDashboard() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Créditos y Próximas Cuotas */}
+            {personalCredits.length > 0 && (
+              <div className="bg-red-100 dark:bg-red-900/20 border border-red-400 dark:border-red-700 rounded-2xl p-6 animate-fade-in">
+                <h3 className="text-lg font-bold text-red-800 dark:text-red-300 mb-4 flex items-center">
+                  💳 Tus Créditos Activos
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                  {personalCredits
+                    .filter((credit) => credit.status === 'active')
+                    .map((credit) => (
+                      <div
+                        key={credit.id}
+                        className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-red-200 dark:border-red-700 hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`px-2 py-1 rounded text-xs ${CREDIT_CATEGORIES[credit.category]?.color}`}>
+                            {CREDIT_CATEGORIES[credit.category]?.icon} {CREDIT_CATEGORIES[credit.category]?.name}
+                          </span>
+                          <span className={`px-2 py-1 rounded text-xs ${CREDIT_PRIORITIES[credit.priority]?.color}`}>
+                            {CREDIT_PRIORITIES[credit.priority]?.icon} {CREDIT_PRIORITIES[credit.priority]?.name}
+                          </span>
+                        </div>
+                        <p className="font-medium text-gray-800 dark:text-gray-200 mb-1">
+                          {credit.name}
+                        </p>
+                        <p className="text-red-600 dark:text-red-400 font-bold mb-1">
+                          Cuota: {formatCurrency(credit.monthly_payment)}
+                        </p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Restante: {formatCurrency(credit.remaining_amount)} de {formatCurrency(credit.total_amount)}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Pago día {credit.payment_day}
+                        </p>
+                      </div>
+                    ))}
+                </div>
+
+                {/* Próximas cuotas a pagar */}
+                {getUpcomingCreditInstallments().length > 0 && (
+                  <>
+                    <h4 className="text-md font-semibold text-red-700 dark:text-red-300 mb-3 flex items-center">
+                      <AlertTriangle className="w-4 h-4 mr-2" />
+                      Cuotas próximas (próximos 7 días)
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {getUpcomingCreditInstallments().map((installment) => {
+                        const credit = personalCredits.find(c => c.id === installment.credit_id);
+                        return (
+                          <div
+                            key={installment.id}
+                            className="bg-red-50 dark:bg-red-900/10 rounded-lg p-3 border border-red-300 dark:border-red-600"
+                          >
+                            <p className="font-medium text-gray-800 dark:text-gray-200 text-sm">
+                              {credit?.name} - Cuota #{installment.installment_number}
+                            </p>
+                            <p className="text-red-700 dark:text-red-400 font-bold">
+                              {formatCurrency(installment.amount)}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Vence: {new Date(installment.due_date).toLocaleDateString('es-CO')}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -1376,7 +1479,11 @@ export default function OptimizedDashboard() {
                       regularExpenses.map((expense) => (
                         <div
                           key={expense.id}
-                          className="flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200 group"
+                          className={`flex items-center justify-between p-3 rounded-lg border transition-all duration-200 group ${
+                            expense.paid
+                              ? "border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20 opacity-75"
+                              : "border-gray-200 dark:border-gray-700 hover:shadow-md hover:bg-gray-50 dark:hover:bg-gray-700"
+                          }`}
                         >
                           <div className="flex-1">
                             <p className="font-medium text-gray-800 dark:text-gray-200 group-hover:text-gray-900 dark:group-hover:text-gray-100">
@@ -1392,12 +1499,32 @@ export default function OptimizedDashboard() {
                               <span className="text-xs text-gray-500 dark:text-gray-400">
                                 Día {expense.payment_date}
                               </span>
+                              {expense.paid && (
+                                <span className="px-2 py-1 rounded text-xs bg-green-100 text-green-800 dark:bg-green-800/20 dark:text-green-400">
+                                  ✅ Pagado {expense.paid_date ? `(${expense.paid_date})` : ''}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-red-600 dark:text-red-400">
+                            <span className={`font-bold ${expense.paid ? 'text-gray-500 dark:text-gray-400 line-through' : 'text-red-600 dark:text-red-400'}`}>
                               {formatCurrency(expense.amount)}
                             </span>
+                            <button
+                              onClick={() => handleToggleExpensePaid(expense)}
+                              className={`p-1 rounded transition-colors opacity-0 group-hover:opacity-100 ${
+                                expense.paid
+                                  ? "text-gray-400 hover:text-orange-500 dark:hover:text-orange-400"
+                                  : "text-gray-400 hover:text-green-500 dark:hover:text-green-400"
+                              }`}
+                              title={expense.paid ? "Marcar como pendiente" : "Marcar como pagado"}
+                            >
+                              {expense.paid ? (
+                                <X className="w-4 h-4" />
+                              ) : (
+                                <CheckCircle className="w-4 h-4" />
+                              )}
+                            </button>
                             <button
                               onClick={() =>
                                 handleDeleteWithConfirmation(
@@ -1988,6 +2115,19 @@ export default function OptimizedDashboard() {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === "creditos" && (
+          <CreditsList
+            credits={personalCredits}
+            onAddCredit={addPersonalCredit}
+            onDeleteCredit={deletePersonalCredit}
+            onAddPayment={(creditId: string, payment: any) => 
+              addCreditPayment({ ...payment, credit_id: creditId })
+            }
+            totalMonthlyCreditPayments={totalMonthlyCreditPayments}
+            loading={dataLoading}
+          />
         )}
 
         {activeTab === "settings" && (

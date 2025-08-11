@@ -9,6 +9,9 @@ import type {
   WishlistItem,
   IncomeSource,
   IncomeTransaction,
+  PersonalCredit,
+  CreditPayment,
+  CreditInstallment,
 } from "@/types/financial";
 import {
   calculateMonthlyIncome,
@@ -32,6 +35,9 @@ export function useFinancialData(user: User | null) {
   const [pendingLoans, setPendingLoans] = useState<PendingLoan[]>([]);
   const [loanPayments, setLoanPayments] = useState<LoanPayment[]>([]);
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
+  const [personalCredits, setPersonalCredits] = useState<PersonalCredit[]>([]);
+  const [creditPayments, setCreditPayments] = useState<CreditPayment[]>([]);
+  const [creditInstallments, setCreditInstallments] = useState<CreditInstallment[]>([]);
 
   const supabase = createClient();
 
@@ -49,6 +55,9 @@ export function useFinancialData(user: User | null) {
         { data: loanPaymentsData, error: loanPayError },
         { data: wishlistData, error: wishError },
         { data: salaryData, error: salaryError },
+        { data: personalCreditsData, error: creditsError },
+        { data: creditPaymentsData, error: creditPayError },
+        { data: creditInstallmentsData, error: installmentsError },
       ] = await Promise.all([
         supabase
           .from("income_sources")
@@ -92,6 +101,22 @@ export function useFinancialData(user: User | null) {
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
           .limit(1),
+        supabase
+          .from("personal_credits")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("credit_payments")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("payment_date", { ascending: false })
+          .limit(50),
+        supabase
+          .from("credit_installments")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("due_date", { ascending: true }),
       ]);
 
       if (incomeError) throw incomeError;
@@ -102,6 +127,9 @@ export function useFinancialData(user: User | null) {
       if (loanPayError) throw loanPayError;
       if (wishError) throw wishError;
       if (salaryError) throw salaryError;
+      if (creditsError) throw creditsError;
+      if (creditPayError) throw creditPayError;
+      if (installmentsError) throw installmentsError;
 
       setIncomeSources(incomeSourcesData || []);
       setIncomeTransactions(incomeTransactionsData || []);
@@ -110,6 +138,9 @@ export function useFinancialData(user: User | null) {
       setPendingLoans(pendingLoansData || []);
       setLoanPayments(loanPaymentsData || []);
       setWishlist(wishlistData || []);
+      setPersonalCredits(personalCreditsData || []);
+      setCreditPayments(creditPaymentsData || []);
+      setCreditInstallments(creditInstallmentsData || []);
 
       // Si hay ingresos configurados, calcular el total, sino usar el salario legacy
       if (incomeSourcesData && incomeSourcesData.length > 0) {
@@ -653,6 +684,137 @@ export function useFinancialData(user: User | null) {
     }
   };
 
+  // ===== PERSONAL CREDITS CRUD =====
+  const addPersonalCredit = async (
+    credit: Omit<PersonalCredit, "id" | "user_id" | "created_at" | "updated_at">
+  ) => {
+    if (!user) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from("personal_credits")
+        .insert({ ...credit, user_id: user.id })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setPersonalCredits((prev) => [data, ...prev]);
+      return data;
+    } catch (err: any) {
+      setError(err.message);
+      return null;
+    }
+  };
+
+  const updatePersonalCredit = async (
+    id: string,
+    updates: Partial<PersonalCredit>
+  ) => {
+    if (!user) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from("personal_credits")
+        .update(updates)
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setPersonalCredits((prev) =>
+        prev.map((credit) => (credit.id === id ? data : credit))
+      );
+
+      return data;
+    } catch (err: any) {
+      setError(err.message);
+      return null;
+    }
+  };
+
+  const deletePersonalCredit = async (id: string) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from("personal_credits")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", user.id);
+      if (error) throw error;
+      setPersonalCredits((prev) => prev.filter((credit) => credit.id !== id));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const addCreditPayment = async (
+    payment: Omit<CreditPayment, "id" | "user_id" | "created_at">
+  ) => {
+    if (!user) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from("credit_payments")
+        .insert({ ...payment, user_id: user.id })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setCreditPayments((prev) => [data, ...prev]);
+      
+      // Refresh data to update credit remaining amount
+      loadFinancialData();
+      
+      return data;
+    } catch (err: any) {
+      setError(err.message);
+      return null;
+    }
+  };
+
+  // ===== HELPER FUNCTIONS =====
+  const getIncomeTransactionsThisMonth = () => {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+
+    return incomeTransactions.filter((transaction) => {
+      const transactionDate = new Date(transaction.received_date);
+      return (
+        transactionDate.getMonth() === currentMonth &&
+        transactionDate.getFullYear() === currentYear
+      );
+    });
+  };
+
+  const getActualIncomeThisMonth = () => {
+    return getIncomeTransactionsThisMonth().reduce(
+      (sum, transaction) => sum + transaction.amount,
+      0,
+    );
+  };
+
+  // Get upcoming credit installments
+  const getUpcomingCreditInstallments = (days: number = 7) => {
+    const today = new Date();
+    const futureDate = new Date(today.getTime() + days * 24 * 60 * 60 * 1000);
+    
+    return creditInstallments.filter((installment) => {
+      const dueDate = new Date(installment.due_date);
+      return !installment.is_paid && dueDate >= today && dueDate <= futureDate;
+    }).sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+  };
+
+  // Get total monthly credit payments
+  const getTotalMonthlyCreditPayments = () => {
+    return personalCredits
+      .filter((credit) => credit.status === 'active')
+      .reduce((sum, credit) => sum + credit.monthly_payment, 0);
+  };
+
   // ===== CALCULATIONS (actualizadas) =====
   const totalRegularExpenses = regularExpenses.reduce(
     (sum, expense) => sum + (expense.paid ? 0 : expense.amount),
@@ -662,12 +824,10 @@ export function useFinancialData(user: User | null) {
     (sum, expense) => sum + expense.amount,
     0,
   );
-  const totalExpenses = totalRegularExpenses + totalSporadicExpenses;
+  const totalMonthlyCreditPayments = getTotalMonthlyCreditPayments();
+  const totalExpenses = totalRegularExpenses + totalSporadicExpenses + totalMonthlyCreditPayments;
   const totalMonthlyIncome = calculateMonthlyIncome(incomeSources);
-  const actualIncomeThisMonth = getIncomeTransactionsThisMonth().reduce(
-    (sum, transaction) => sum + transaction.amount,
-    0,
-  );
+  const actualIncomeThisMonth = getActualIncomeThisMonth();
   const baseBalance = (totalMonthlyIncome || currentSalary) + actualIncomeThisMonth - totalExpenses;
   const expectedLoans = pendingLoans.reduce(
     (sum, loan) => sum + (loan.amount * loan.probability) / 100,
@@ -704,26 +864,6 @@ export function useFinancialData(user: User | null) {
     }));
   };
 
-  // NEW: Get income summary for current month
-  const getIncomeTransactionsThisMonth = () => {
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-
-    return incomeTransactions.filter((transaction) => {
-      const transactionDate = new Date(transaction.received_date);
-      return (
-        transactionDate.getMonth() === currentMonth &&
-        transactionDate.getFullYear() === currentYear
-      );
-    });
-  };
-
-  const getActualIncomeThisMonth = () => {
-    return getIncomeTransactionsThisMonth().reduce(
-      (sum, transaction) => sum + transaction.amount,
-      0,
-    );
-  };
 
   return {
     // Data
@@ -736,6 +876,9 @@ export function useFinancialData(user: User | null) {
     pendingLoans,
     loanPayments,
     wishlist,
+    personalCredits,
+    creditPayments,
+    creditInstallments,
 
     // State
     loading,
@@ -766,15 +909,24 @@ export function useFinancialData(user: User | null) {
     updateSalary,
     refresh: loadFinancialData,
 
+    // Personal Credits Operations
+    addPersonalCredit,
+    updatePersonalCredit,
+    deletePersonalCredit,
+    addCreditPayment,
+
     // Calculations
     totalRegularExpenses,
     totalSporadicExpenses,
+    totalMonthlyCreditPayments,
     totalExpenses,
     baseBalance,
     expectedLoans,
     potentialBalance,
     getUpcomingPayments,
     getUpcomingIncomesData,
+    getUpcomingCreditInstallments,
+    getTotalMonthlyCreditPayments,
     getAffordableItems,
     getIncomeTransactionsThisMonth,
     getActualIncomeThisMonth,
