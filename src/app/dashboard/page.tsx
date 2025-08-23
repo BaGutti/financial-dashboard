@@ -45,6 +45,8 @@ import { Analytics } from "@/components/Analytics";
 import { INCOME_CATEGORIES, CREDIT_CATEGORIES, CREDIT_PRIORITIES } from "@/types/financial";
 import type { IncomeSource, PersonalCredit, CreditInstallment } from "@/types/financial";
 import { CreditsList } from "@/components/CreditsList";
+import { FinancialAlerts } from "@/components/FinancialAlerts";
+import { FinancialCharts } from "@/components/FinancialCharts";
 
 // Skeleton Loader Component
 function SkeletonCard() {
@@ -938,6 +940,7 @@ export default function OptimizedDashboard() {
                 { id: "income", label: "Ingresos", icon: Banknote },
                 { id: "expenses", label: "Gastos", icon: TrendingDown },
                 { id: "creditos", label: "Créditos", icon: CreditCard },
+                { id: "analytics", label: "Analytics", icon: TrendingUp },
                 { id: "wishlist", label: "Wishlist", icon: Heart },
                 { id: "settings", label: "Config", icon: Settings },
               ].map((tab) => (
@@ -1030,6 +1033,20 @@ export default function OptimizedDashboard() {
                 </>
               )}
             </div>
+
+            {/* 🚨 NUEVAS ALERTAS INTELIGENTES */}
+            {!dataLoading && (
+              <FinancialAlerts
+                regularExpenses={regularExpenses}
+                personalCredits={personalCredits}
+                wishlist={wishlist}
+                incomeSources={incomeSources}
+                baseBalance={baseBalance}
+                potentialBalance={potentialBalance}
+                totalMonthlyCreditPayments={totalMonthlyCreditPayments}
+                className="animate-fade-in"
+              />
+            )}
 
             {/* Alertas de Pagos Próximos */}
             {upcomingPayments.length > 0 && (
@@ -2128,6 +2145,84 @@ export default function OptimizedDashboard() {
             totalMonthlyCreditPayments={totalMonthlyCreditPayments}
             loading={dataLoading}
           />
+        )}
+
+        {activeTab === "analytics" && (
+          <div className="space-y-8">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent mb-2">
+                📊 Analytics & Insights
+              </h2>
+              <p className="text-gray-600 dark:text-gray-400">
+                Análisis profundo de tus finanzas con gráficos interactivos
+              </p>
+            </div>
+
+            {dataLoading ? (
+              <div className="space-y-6">
+                <SkeletonCard />
+                <SkeletonCard />
+                <SkeletonCard />
+              </div>
+            ) : (
+              <FinancialCharts
+                incomeData={(() => {
+                  // Generar datos de ejemplo para los últimos 6 meses
+                  const months = [];
+                  const currentDate = new Date();
+                  
+                  for (let i = 5; i >= 0; i--) {
+                    const date = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+                    const monthName = date.toLocaleDateString('es', { month: 'short' });
+                    
+                    // Simular datos basados en los datos reales
+                    const monthlyIncome = totalMonthlyIncome || currentSalary;
+                    const totalSporadicExpensesAmount = sporadicExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+                    const monthlyExpenses = totalRegularExpenses + (totalSporadicExpensesAmount / 6); // Distribuir gastos esporádicos
+                    const monthlyCredits = totalMonthlyCreditPayments;
+                    
+                    months.push({
+                      month: monthName,
+                      income: monthlyIncome + (Math.random() * 200000 - 100000), // Variación aleatoria
+                      expenses: monthlyExpenses + monthlyCredits + (Math.random() * 100000 - 50000),
+                      balance: monthlyIncome - monthlyExpenses - monthlyCredits
+                    });
+                  }
+                  return months;
+                })()}
+                categoryData={(() => {
+                  // Agrupar gastos esporádicos por categoría
+                  const categoryTotals: Record<string, number> = {};
+                  
+                  sporadicExpenses.forEach(expense => {
+                    const categoryName = CATEGORIES[expense.category]?.name || expense.category;
+                    categoryTotals[categoryName] = (categoryTotals[categoryName] || 0) + expense.amount;
+                  });
+                  
+                  // Agregar gastos regulares
+                  regularExpenses.forEach(expense => {
+                    if (expense.paid) {
+                      const categoryName = CATEGORIES[expense.category]?.name || expense.category;
+                      categoryTotals[categoryName] = (categoryTotals[categoryName] || 0) + expense.amount;
+                    }
+                  });
+                  
+                  return Object.entries(categoryTotals).map(([name, value], index) => ({
+                    name,
+                    value,
+                    color: `hsl(${index * 45}, 70%, 60%)`
+                  }));
+                })()}
+                creditsData={personalCredits.map(credit => ({
+                  name: credit.name.substring(0, 15) + (credit.name.length > 15 ? '...' : ''),
+                  remaining: credit.remaining_amount,
+                  total: credit.total_amount,
+                  progress: ((credit.total_amount - credit.remaining_amount) / credit.total_amount) * 100
+                }))}
+                className="animate-fade-in"
+              />
+            )}
+          </div>
         )}
 
         {activeTab === "settings" && (

@@ -71,6 +71,7 @@ export interface PersonalCredit {
   monthly_payment: number;
   interest_rate: number;
   start_date: string;
+  first_payment_date: string;
   end_date: string | null;
   payment_day: number;
   status: CreditStatus;

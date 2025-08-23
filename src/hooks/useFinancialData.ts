@@ -810,14 +810,26 @@ export function useFinancialData(user: User | null) {
 
   // Get total monthly credit payments
   const getTotalMonthlyCreditPayments = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Resetear horas para comparación limpia
+    
     return personalCredits
-      .filter((credit) => credit.status === 'active')
+      .filter((credit) => {
+        if (credit.status !== 'active') return false;
+        
+        const firstPaymentDate = new Date(credit.first_payment_date);
+        firstPaymentDate.setHours(0, 0, 0, 0); // Resetear horas para comparación limpia
+        
+        // Solo incluir créditos cuyo primer pago YA debería haber llegado o ser hoy
+        // Si el primer pago es en el futuro (mañana o después), NO se cuenta
+        return firstPaymentDate <= today;
+      })
       .reduce((sum, credit) => sum + credit.monthly_payment, 0);
   };
 
   // ===== CALCULATIONS (actualizadas) =====
   const totalRegularExpenses = regularExpenses.reduce(
-    (sum, expense) => sum + (expense.paid ? 0 : expense.amount),
+    (sum, expense) => sum + (expense.paid ? expense.amount : 0),
     0,
   );
   const totalSporadicExpenses = sporadicExpenses.reduce(
