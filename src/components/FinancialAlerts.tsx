@@ -200,7 +200,7 @@ export function FinancialAlerts({
   }, [regularExpenses, personalCredits, wishlist, incomeSources, baseBalance, potentialBalance, totalMonthlyCreditPayments, dismissedAlerts]);
 
   const dismissAlert = (alertId: string) => {
-    setDismissedAlerts(prev => new Set([...prev, alertId]));
+    setDismissedAlerts(prev => new Set([...Array.from(prev), alertId]));
   };
 
   const getAlertStyles = (type: Alert['type']) => {
